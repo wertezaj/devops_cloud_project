@@ -33,7 +33,12 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push 
+    needs: build-and-push
+
+    env:
+      # <--- WPISZ TUTAJ SWÓJ NUMER KONTA AWS I REGION (dokładnie tak jak masz w konsoli ECR)
+      ECR_REGISTRY: "426771917511.dkr.ecr.eu-central-1.amazonaws.com"
+      ECR_REPOSITORY: "devopsapp"
 
     steps:
     - name: Deploy to EC2 via SSH
@@ -43,13 +48,17 @@ jobs:
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
+          # 1. Logowanie do ECR na maszynie EC2 przy użyciu zainstalowanego awscli
           export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
           export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin ${{ needs.build-and-push.outputs.registry }}
+          aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
           
-          docker pull ${{ needs.build-and-push.outputs.registry }}/devops-trainee-app:latest
+          # 2. Pobranie obrazu przy użyciu pełnego, sztywnego adresu URL
+          docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
           
+          # 3. Zatrzymanie starego kontenera (błędy 'No such container' są normalne i ignorowane przez || true)
           docker stop my-running-app || true
           docker rm my-running-app || true
           
-          docker run -d --name my-running-app -p 80:5000 ${{ needs.build-and-push.outputs.registry }}/devops-trainee-app:latest
+          # 4. Uruchomienie nowej wersji na porcie 80 serwera
+          docker run -d --name my-running-app -p 80:5000 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
